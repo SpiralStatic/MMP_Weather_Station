@@ -1,0 +1,29 @@
+/* Web Page */
+body {
+	text-align: center;
+	margin: 0px;
+	font: 18px monospace;
+	background-image: url(images/background.png);
+}
+
+/* Title */
+h1 {
+	margin-bottom: 0px;
+}
+
+hr.bold{
+    padding: 0;
+    border: none;
+    border-top: medium double #333;
+    color: #333;
+    text-align: center;
+}
+
+input[type=text] {
+	text-align: center;
+	width: 10em;
+}
+
+#temp_graph {
+	display: inline-block;
+}
