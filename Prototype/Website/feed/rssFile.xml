@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+<title>MMP Weather Station</title>
+<link>http://192.168.1.64/website/weather</link>
+<description>Retrieves the most recent data from a weather station</description>
+<language>en-gb</language>
+<copyright>Copyright 2016 Chris Tsoi</copyright>
+<item>
+<title>Latest Reading</title>
+<description>
+[ Inward Temperature: 24 ]
+[ Outward Temperature: 23 ]
+[ Inward Humidity: 62 ]
+[ Outward Humidity: 44 ]
+[ Wind Speed:0 ]
+[ Wind Direction: W ]
+[ Rainfall: 0 ]
+</description>
+<pubDate>2016-03-07 20:17:04GMT</pubDate></item>
+</channel>
+</rss>

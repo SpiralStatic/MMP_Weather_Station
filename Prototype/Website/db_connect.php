@@ -1,6 +1,6 @@
 <?php
 	$hostname = "localhost";
-	$username = "****";
+	$username = "******";
 	$password = "******";
 	$database = "weather_prototype";
 

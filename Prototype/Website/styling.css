@@ -27,3 +27,12 @@ input[type=text] {
 #temp_graph {
 	display: inline-block;
 }
+
+.feed {
+	position: fixed;
+	top: 10px;
+	right: 2px;
+	padding: 20px 20px 20px 20px;
+	background-image: url(images/feed-icon-28x28.png);
+	background-repeat: no-repeat;
+}

@@ -7,6 +7,7 @@
 <head> <!-- HTML Header that contains information on the page -->
 	<meta charset="UTF-8"/>
 	<link rel="stylesheet" type="text/css" href="styling.css">
+	<link rel="alternate" href="feed/rssFile.xml" title="MMP Weather Station" type="application/rss+xml" />
 	<script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
 	<script type="text/javascript" src="//ajax.googleapis.com/ajax/libs/jquery/1.10.2/jquery.min.js"></script>
 	<script type="text/javascript">
@@ -42,13 +43,15 @@
 </head>
 
 <body> <!-- HTML Body that contains site content -->
-	<section> <!-- Reserve -->
-	<h1>Weather Prototype Website</h1>
+	<section>
+		<h1>Weather Prototype Website</h1>
+		<a href="feed/rss.php" class="feed"></a>
 		<?php
 			require("get_readings.php"); // Retrieve most recent data from get_readings.php
 		?>
 	</section>
 	
+	<!-- Create temperature graph -->
 	<article>
 		<div id="temp_graph"></div>
 	</article>

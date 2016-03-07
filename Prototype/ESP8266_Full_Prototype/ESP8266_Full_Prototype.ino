@@ -17,7 +17,7 @@
 #define RAIN_INTERRUPT 2
 
 // Debug mode
-#define DEBUG true
+#define DEBUG false
 
 // Initialise DHT sensors
 DHT dht_in(DHT_PIN, DHT_TYPE, 11);
@@ -35,7 +35,7 @@ volatile int old_rain_counter = 0; // Allows for counter reset
 float rainfall = 0.0; // Rainfall
 unsigned long current_millis = 0; // Current time
 unsigned long previous_millis = 0; // Time since last reading
-const long interval = 3000; // Time between readings
+const long interval = 10000; // Time between readings
 long debounce_time = 100;
 unsigned int iteration = 0; // Each reading for debugging
 
@@ -43,15 +43,15 @@ char INSERT_SQL[] = "INSERT INTO weather_prototype.weather_reading (Temperature_
 char query[256];
 
 // Wifi variables
-const char* wifi_ssid = "****"; // Wifi information
+const char* wifi_ssid = "******"; // Wifi information
 const char* wifi_password = "******";
 
-IPAddress db_address(192,168,1,64); // Database information
-const int db_port = 3306;
-char db_user[] = "esp8266";
-char db_password[] = "esp8266weather";
+IPAddress db_address(******); // Database information
+const int db_port = ******;
+char db_user[] = "******";
+char db_password[] = "******";
 
-IPAddress router_address(192,168,1,254); // Router Address
+IPAddress router_address(******); // Router Address
 
 WiFiClient client; // Wifi Client connection
 MySQL_Connection conn((Client *)&client); //SQL Client connection
