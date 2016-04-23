@@ -13,6 +13,9 @@
 
 #include <DHT.h>
 
+//#include "Reading.cpp"
+//#include "Queue.cpp"
+
 // Debug flag
 #define DEBUG true
 
@@ -25,12 +28,16 @@
 #define ANEMOMETER_PIN D2
 #define DATAGRAM_SIZE 41
 
+// Rain guage defines
+#define RAIN_PIN D4
+#define RAIN_INTERRUPT 2
+
 // Initialise DHT sensors
 DHT inwardDht22(INWARD_DHT22_PIN, DHT_TYPE, 11);
 DHT outwardDht22(OUTWARD_DHT22_PIN, DHT_TYPE, 11);
 
 // Initialise variables
-const long interval = 2000; // Time interval between each reading
+const long interval = 3000; // Time interval between each reading
 unsigned long currentTime = 0; // Current Time
 unsigned long previousTime = 0; // Previous current time
 
@@ -49,6 +56,136 @@ unsigned char anemometerDatagram[DATAGRAM_SIZE]; // Array to hold anemometer dat
 unsigned int windDirectionNo = 0; // Wind direction in bit value
 String windDirection = ""; // Wind direction as compass direction
 double windSpeed = 0; // Wind speed in metres per second
+
+volatile int rainCount = 0; // Counts the flips of thr internal rain gauge seesaw
+volatile int oldRainCount = 0; // Allows for counter reset
+double rainfall = 0; // Total rainfall within interval
+long debounceTime = 100; // Set time to disregard consecutive interrupts from rain gauge
+
+const int queueSize = 30; // Size of queue
+
+// Class: Is a set of readings taken at the same time
+class Reading {
+  private:
+    double readingInwardDht22Temperature; // Inward DHT22 temperature reading
+    double readingInwardDht22Humidity; // Inward DHT22 humidity reading
+    double readingOutwardDht22Temperature; // Outward DHT22 temperature reading
+    double readingOutwardDht22Humidity; // Outward DHT22 humidity reading
+
+    String readingWindDirection; // Wind direction as compass direction
+    double readingWindSpeed; // Wind speed in metres per second
+
+    double readingRainfall; // Total rainfall within interval
+
+  public:
+    Reading() {
+      // Empty Object
+    }
+    Reading(double inputInwardDht22Temperature, double inputInwardht22Humidity, double inputOutwardDht22Temperature,
+            double inputOutwardDht22Humidity, String inputWindDirection, double inputWindSpeed, double inputRainfall) {
+
+      readingInwardDht22Temperature = inputInwardDht22Temperature;
+      readingInwardDht22Humidity = inputInwardht22Humidity;
+      readingOutwardDht22Temperature = inputOutwardDht22Temperature;
+      readingOutwardDht22Humidity = inputOutwardDht22Humidity;
+      readingWindDirection = inputWindDirection;
+      readingWindSpeed = inputWindSpeed;
+      readingRainfall = inputRainfall;
+    }
+
+    double getReadingInwardDht22Temperature();
+    double getReadingInwardDht22Humidity();
+    double getReadingOutwardDht22Temperature();
+    double getReadingOutwardDht22Humidity();
+    String getReadingWindDirection();
+    double getReadingWindSpeed();
+    double getReadingRainfall();
+};
+
+
+double Reading::getReadingInwardDht22Temperature() {
+  return readingInwardDht22Temperature;
+}
+
+double Reading::getReadingInwardDht22Humidity() {
+  return readingInwardDht22Humidity;
+}
+
+double Reading::getReadingOutwardDht22Temperature() {
+  return readingOutwardDht22Temperature;
+}
+
+double Reading::getReadingOutwardDht22Humidity() {
+  return readingOutwardDht22Humidity;
+}
+
+String Reading::getReadingWindDirection() {
+  return readingWindDirection;
+}
+
+double Reading::getReadingWindSpeed() {
+  return readingWindSpeed;
+}
+
+double Reading::getReadingRainfall() {
+  return readingRainfall;
+}
+
+// Class: Implements the abstract data type 'Queue'
+class Queue {
+  private:
+    unsigned int queueHead;
+    unsigned int queueTail;
+    Reading queue[queueSize];
+    
+  public:
+    Queue() {
+      queueHead = 0;
+      queueTail = 0;
+    }
+
+    void enqueue(Reading);
+    Reading dequeue();
+    Reading getQueueItem(int);
+    int getQueueLength();
+};
+
+// Places an item into the queue and updates queue tail
+void Queue::enqueue(Reading input) {
+  int newQueueTail = (queueTail + 1) % queueSize;
+  if (queueHead == newQueueTail) {
+    Serial.println("Failed to enqueue, queue is full");
+  }
+  else {
+    queue[queueTail] = input;
+    queueTail = newQueueTail;
+  }
+}
+
+// Takes an item off the queue and creates the new queue head
+Reading Queue::dequeue() {
+  if (queueHead == queueTail) {
+    Serial.println("Failed to dequeue, queue is empty");
+  }
+  else {
+    Reading output = queue[queueHead];
+    queueHead  = (queueHead + 1) % queueSize;
+    return output;
+  }
+}
+
+// Returns an item from the queue
+// Parameter input: Is the lcoation of the item to retrieve
+Reading Queue::getQueueItem(int input) {
+  return queue[input];
+}
+
+// Returns the queue length
+int Queue::getQueueLength() {
+  return queueTail - queueHead + (queueHead > queueTail ? queueSize : 0);
+}
+
+Queue readingQueue = Queue(); // Initialise Queue
 
 // Function that retrieves a reading from a DHT22
 // Parameter (sensor): The DHT22 sensor retrieving from
@@ -133,7 +270,7 @@ void decomposeWindReading() {
 
   // Checks to see if both the checksum and the calculated checksum match
   if (checksum != calculatedChecksum) {
-  Serial.println("Failed to read from anemometer |Checksum Error|");
+    Serial.println("Failed to read from anemometer |Checksum Error|");
     Serial.println("Checksum: " + String(checksum) + " != " + String(calculatedChecksum));
   }
 }
@@ -192,6 +329,22 @@ void translateWindDirection() {
   }
 }
 
+// ISR - Increases the rain counter by one when fired
+void rainCounter() {
+  currentTime = millis();
+  if (currentTime - previousTime >= debounceTime) {
+    previousTime = currentTime;
+
+    rainCount++;
+  }
+}
+
+// Calulates the rainfall in mm from the rain count since last interval
+double getRainReading() {
+  oldRainCount = rainCount;
+  return rainCount * 0.5;
+}
+
 // Outputs the most recent meteorological data to the serial monitor
 void displayLastReading() {
   Serial.println("\nInward DHT22 Temperature: " + String(inwardDht22Temperature) + "\260C");
@@ -200,6 +353,7 @@ void displayLastReading() {
   Serial.println("Outward DHT22 Humidity: " + String(outwardDht22Humidity) + "%");
   Serial.println("Wind Direction: " + String(windDirection));
   Serial.println("Wind Speed: " + String(windSpeed) + " m/s");
+  Serial.println("Rainfall: " + String(rainfall) + " mm");
 }
 
 // System set-up
@@ -210,6 +364,11 @@ void setup() {
   outwardDht22.begin(); // Initialise outward DHT22
 
   pinMode(ANEMOMETER_PIN, INPUT); // Initialise anemometer pin as 'input'
+
+  pinMode(RAIN_PIN, INPUT);
+  pinMode(RAIN_INTERRUPT, INPUT);
+  digitalWrite(RAIN_INTERRUPT, HIGH);
+  attachInterrupt(RAIN_INTERRUPT, rainCounter, FALLING);
 }
 
 // Main system loop
@@ -227,11 +386,21 @@ void loop() {
 
     recieveDatagram(); // Retrieves anemometer datagram
     decomposeWindReading(); // Decomposed datagram into its parts: WindDirection and WindSpeed
-    translateWindDirection();
+    translateWindDirection(); // Gets the associated compass direction from its number
+    rainfall = getRainReading(); // Gets total rainfall
 
+    // Create new reading set from retrieved information
+    Reading newReading = Reading(inwardDht22Temperature, outwardDht22Temperature, inwardDht22Humidity, outwardDht22Humidity, windDirection, windSpeed, rainfall);    
+    readingQueue.enqueue(newReading); // Adds it to queue
+    for (int i = 0; i < readingQueue.getQueueLength(); i++) {
+      Reading temp = readingQueue.getQueueItem(i);
+      Serial.println(temp.getReadingInwardDht22Temperature());
+    }
     // Perform when DEBUG flag is set to 'true'
     if (DEBUG == true) {
       displayLastReading();
     }
+
+    rainCount = rainCount - oldRainCount;
   }
 }
