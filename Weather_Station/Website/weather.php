@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <?php
-	require ("db_connect.php");
+	//require ("db_connect.php");
 ?>
 <html lang="en">
 
@@ -11,8 +11,15 @@
 </head>
 
 <body> <!-- HTML Body that contains site content -->
-	<section>
+	<header>
+		<a href="weather.php" class="logo">
+			<img src="images/weatherLogo.png" alt="Weather Station Logo">
+		</a>
 		<h1 class="title">Aberystywyth Weather Station</h1>
+	</header>
+	
+	<section>
+		
 
 	</section>
 	

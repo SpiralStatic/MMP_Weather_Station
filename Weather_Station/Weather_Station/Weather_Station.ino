@@ -12,9 +12,9 @@
 */
 
 #include <DHT.h>
-
-//#include "Reading.cpp"
-//#include "Queue.cpp"
+#include <TimeLib.h>
+#include <ESP8266WiFi.h>
+#include <WiFiUdp.h>
 
 // Debug flag
 #define DEBUG true
@@ -26,7 +26,7 @@
 
 // Anemometer defines
 #define ANEMOMETER_PIN D2
-#define DATAGRAM_SIZE 41
+#define DATAGRAM_SIZE 41 + 5
 
 // Rain guage defines
 #define RAIN_PIN D4
@@ -37,7 +37,7 @@ DHT inwardDht22(INWARD_DHT22_PIN, DHT_TYPE, 11);
 DHT outwardDht22(OUTWARD_DHT22_PIN, DHT_TYPE, 11);
 
 // Initialise variables
-const long interval = 3000; // Time interval between each reading
+const long interval = 20000; // Time interval between each reading
 unsigned long currentTime = 0; // Current Time
 unsigned long previousTime = 0; // Previous current time
 
@@ -63,6 +63,20 @@ double rainfall = 0; // Total rainfall within interval
 long debounceTime = 100; // Set time to disregard consecutive interrupts from rain gauge
 
 const int queueSize = 30; // Size of queue
+
+// Wifi variables
+const char* wifi_ssid = "Fairview Wi-fi"; // Wifi information
+const char* wifi_password = "c64be3dcb2"; // Password information
+
+WiFiUDP Udp;
+IPAddress timeServer;
+const char* host = "0.uk.pool.ntp.org"; // Address to retrieve current time from
+unsigned int localPort = 8888;  // local port to listen for UDP packets
+
+String readingTime = ""; // Time of reading
+const double forwardDst = 3.31; // When daylight savings pushes clocks forwards an hour
+const double backwardDst = 10.31; // When daylight savings rewinds clocks backwards an hour
+const int timeZone = 0; // Current time-zone (GMT)
 
 // Class: Is a set of readings taken at the same time
 class Reading {
@@ -137,7 +151,7 @@ class Queue {
     unsigned int queueHead;
     unsigned int queueTail;
     Reading queue[queueSize];
-    
+
   public:
     Queue() {
       queueHead = 0;
@@ -154,7 +168,7 @@ class Queue {
 void Queue::enqueue(Reading input) {
   int newQueueTail = (queueTail + 1) % queueSize;
   if (queueHead == newQueueTail) {
-    Serial.println("Failed to enqueue, queue is full");
+    Serial.println("\nFailed to enqueue, queue is full");
   }
   else {
     queue[queueTail] = input;
@@ -165,7 +179,7 @@ void Queue::enqueue(Reading input) {
 // Takes an item off the queue and creates the new queue head
 Reading Queue::dequeue() {
   if (queueHead == queueTail) {
-    Serial.println("Failed to dequeue, queue is empty");
+    Serial.println("\nFailed to dequeue, queue is empty");
   }
   else {
     Reading output = queue[queueHead];
@@ -190,6 +204,7 @@ Queue readingQueue = Queue(); // Initialise Queue
 // Function that retrieves a reading from a DHT22
 // Parameter (sensor): The DHT22 sensor retrieving from
 // Parameter (type): The type to retrieve [temperature or humidity]
+// Returns double: The reading
 double getDhtReading(DHT sensor, dhtReadingType type) {
   double tempReading;
 
@@ -214,25 +229,29 @@ double getDhtReading(DHT sensor, dhtReadingType type) {
 }
 
 // Function that retrieves the datagram from the amemometer and places it into a char array
-void recieveDatagram() {
+boolean recieveDatagram() {
   unsigned long duration = 0;
 
   while (digitalRead(ANEMOMETER_PIN) == HIGH) {
     delayMicroseconds(1);
-    yield();
+    //yield();
   }
   while (digitalRead(ANEMOMETER_PIN) == LOW) {
     delayMicroseconds(1);
-    yield();
+    //yield();
     duration++;
   }
-  // Waits two cycles as one datagram takes 49.2 msec [1.2 x 41], in order to ensure it registers a full message
-  if (duration > 100000) {
-    delayMicroseconds(600); // First 5 bits provide no information so skip [1.2msec x 5]
+  // Anemometer transmits data every two seconds
+  if (duration > 200000) {
+    delayMicroseconds(600); // Go to middle of first bit
     for (int i = 0; i < DATAGRAM_SIZE; i++) {
       anemometerDatagram[i] = digitalRead(ANEMOMETER_PIN);
       delayMicroseconds(1200);
     }
+    return true;
+  }
+  else {
+    return false;
   }
 }
 
@@ -250,7 +269,6 @@ void decomposeWindReading() {
 
   windSpeedValue = (~windSpeedValue) & 0x1ff;
 
-  windSpeed = double(windSpeedValue) / 10;
   // Calculates the checksum from the wind direction and three nibbles of the 12 bit wind speed by doing a sum calculation
   unsigned char windSpeedNibble1to4 = (anemometerDatagram[12] << 3) + (anemometerDatagram[11] << 2) + (anemometerDatagram[10] << 1) + anemometerDatagram[9];
   windSpeedNibble1to4 = (~windSpeedNibble1to4) & 0x0f;
@@ -270,8 +288,12 @@ void decomposeWindReading() {
 
   // Checks to see if both the checksum and the calculated checksum match
   if (checksum != calculatedChecksum) {
-    Serial.println("Failed to read from anemometer |Checksum Error|");
+    Serial.println("\nFailed to read from anemometer |Checksum Error|");
     Serial.println("Checksum: " + String(checksum) + " != " + String(calculatedChecksum));
+    windSpeed = -1; // Sets windSpeed to -1 for database to discard
+  }
+  else {
+    windSpeed = double(windSpeedValue) / 10;
   }
 }
 
@@ -345,9 +367,94 @@ double getRainReading() {
   return rainCount * 0.5;
 }
 
+const int NTP_PACKET_SIZE = 48; // NTP time is in the first 48 bytes of message
+byte packetBuffer[NTP_PACKET_SIZE]; //buffer to hold incoming & outgoing packets
+
+// Sends a NTP request to the time server at the given address
+// **Modified from time library example TimeNTP_ESP8266WiFi**
+void sendNTPpacket(IPAddress &address) {
+  // Set all bytes in the buffer to 0
+  memset(packetBuffer, 0, NTP_PACKET_SIZE);
+  // Initialize values needed to form NTP request
+  packetBuffer[0] = 0b11100011;   // LI, Version, Mode
+  packetBuffer[1] = 0;     // Stratum, or type of clock
+  packetBuffer[2] = 6;     // Polling Interval
+  packetBuffer[3] = 0xEC;  // Peer Clock Precision
+  // 8 bytes of zero for Root Delay & Root Dispersion
+  packetBuffer[12]  = 49;
+  packetBuffer[13]  = 0x4E;
+  packetBuffer[14]  = 49;
+  packetBuffer[15]  = 52;
+  // All NTP fields have been given values, now
+  // You can send a packet requesting a timestamp:
+  Udp.beginPacket(address, 123); // NTP requests are to port 123
+  Udp.write(packetBuffer, NTP_PACKET_SIZE);
+  Udp.endPacket();
+}
+
+// Retrieves time from the time server
+// **Modified from time library example TimeNTP_ESP8266WiFi**
+time_t getNtpTime() {
+  while (Udp.parsePacket() > 0) ; // Discard any previously received packets
+  Serial.println("Transmit NTP Request");
+  sendNTPpacket(timeServer);
+  uint32_t beginWait = millis();
+  while (millis() - beginWait < 1500) {
+    int size = Udp.parsePacket();
+    if (size >= NTP_PACKET_SIZE) {
+      Serial.println("Receive NTP Response");
+      Udp.read(packetBuffer, NTP_PACKET_SIZE);  // Read packet into the buffer
+      unsigned long secsSince1900;
+      // Convert four bytes starting at location 40 to a long integer
+      secsSince1900 =  (unsigned long)packetBuffer[40] << 24;
+      secsSince1900 |= (unsigned long)packetBuffer[41] << 16;
+      secsSince1900 |= (unsigned long)packetBuffer[42] << 8;
+      secsSince1900 |= (unsigned long)packetBuffer[43];
+      return secsSince1900 - 2208988800UL + timeZone * SECS_PER_HOUR;
+    }
+  }
+  Serial.println("No NTP Response");
+  return 0; // Return 0 if unable to get the time
+}
+
+// Function that returns whether it is daylight saving time or not
+// Returns boolean: true = is daylight saving, false = not
+boolean isDaylightSaving() {
+  String currentString = String(month()) + "." + String(day());
+  float currentNo = currentString.toFloat();
+  if (currentNo >= forwardDst && currentNo <= backwardDst) {
+    return true;
+  }
+  else {
+    return false;
+  }
+}
+
+// Function that returns the time in dateTime format, taking into account daylight savings
+String getTime() {
+  String actualTime = "";
+  if (timeStatus() != timeNotSet) {
+    int newHour;
+    if (isDaylightSaving() == true) {
+      newHour = hour() + 1;
+    }
+    else {
+      newHour = hour();
+    }
+    actualTime = String(year()) + "-" + String(month()) + "-" + String(day()) + " " + String(newHour) +
+                 ":" + String(minute()) + ":" + String(second());
+    return actualTime;
+  }
+  else {
+    WiFi.hostByName(host, timeServer);
+    setSyncProvider(getNtpTime);
+  }
+}
+
 // Outputs the most recent meteorological data to the serial monitor
 void displayLastReading() {
-  Serial.println("\nInward DHT22 Temperature: " + String(inwardDht22Temperature) + "\260C");
+  Serial.println("\nDate Time: " + readingTime);
+  Serial.println("Inward DHT22 Temperature: " + String(inwardDht22Temperature) + "\260C");
   Serial.println("Inward DHT22 Humidity: " + String(inwardDht22Humidity) + "%");
   Serial.println("Outward DHT22 Temperature: " + String(outwardDht22Temperature) + "\260C");
   Serial.println("Outward DHT22 Humidity: " + String(outwardDht22Humidity) + "%");
@@ -359,6 +466,15 @@ void displayLastReading() {
 // System set-up
 void setup() {
   Serial.begin(115200);
+  Serial.println("\nConnecting to: ");
+  Serial.println(wifi_ssid);
+  WiFi.begin(wifi_ssid, wifi_password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.println("WiFi connection failed, retrying.");
+  }
+  Serial.println("WiFi connected");
+  Serial.println("IP address: " + WiFi.localIP());
 
   inwardDht22.begin(); // Initialise inward DHT22
   outwardDht22.begin(); // Initialise outward DHT22
@@ -369,6 +485,11 @@ void setup() {
   pinMode(RAIN_INTERRUPT, INPUT);
   digitalWrite(RAIN_INTERRUPT, HIGH);
   attachInterrupt(RAIN_INTERRUPT, rainCounter, FALLING);
+
+  Udp.begin(localPort);
+  WiFi.hostByName(host, timeServer);
+  setSyncProvider(getNtpTime);
+  delay(1000);
 }
 
 // Main system loop
@@ -384,18 +505,21 @@ void loop() {
     inwardDht22Humidity = getDhtReading(inwardDht22, HUMIDITY); // Retrieve humidity from inward DHT22
     outwardDht22Humidity = getDhtReading(outwardDht22, HUMIDITY); // Retrieve humidity from outward DHT22
 
-    recieveDatagram(); // Retrieves anemometer datagram
-    decomposeWindReading(); // Decomposed datagram into its parts: WindDirection and WindSpeed
-    translateWindDirection(); // Gets the associated compass direction from its number
+    if (recieveDatagram() == true) { // Retrieves anemometer datagram
+      decomposeWindReading(); // Decomposed datagram into its parts: WindDirection and WindSpeed
+      translateWindDirection(); // Gets the associated compass direction from its number
+    }
     rainfall = getRainReading(); // Gets total rainfall
 
+    readingTime = getTime();
+
     // Create new reading set from retrieved information
-    Reading newReading = Reading(inwardDht22Temperature, outwardDht22Temperature, inwardDht22Humidity, outwardDht22Humidity, windDirection, windSpeed, rainfall);    
+    Reading newReading = Reading(inwardDht22Temperature, outwardDht22Temperature, inwardDht22Humidity, outwardDht22Humidity, windDirection, windSpeed, rainfall);
     readingQueue.enqueue(newReading); // Adds it to queue
-    for (int i = 0; i < readingQueue.getQueueLength(); i++) {
-      Reading temp = readingQueue.getQueueItem(i);
-      Serial.println(temp.getReadingInwardDht22Temperature());
-    }
+    //for (int i = 0; i < readingQueue.getQueueLength(); i++) {
+     // Reading temp = readingQueue.getQueueItem(i);
+     // Serial.println(temp.getReadingInwardDht22Temperature());
+   // }
     // Perform when DEBUG flag is set to 'true'
     if (DEBUG == true) {
       displayLastReading();
