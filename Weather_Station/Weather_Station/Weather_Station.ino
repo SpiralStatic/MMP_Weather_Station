@@ -15,6 +15,8 @@
 #include <TimeLib.h>
 #include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
+#include <MySQL_Connection.h>
+#include <MySQL_Cursor.h>
 
 // Debug flag
 #define DEBUG true
@@ -37,7 +39,7 @@ DHT inwardDht22(INWARD_DHT22_PIN, DHT_TYPE, 11);
 DHT outwardDht22(OUTWARD_DHT22_PIN, DHT_TYPE, 11);
 
 // Initialise variables
-const long interval = 20000; // Time interval between each reading
+const long interval = 30000; // Time interval between each reading
 unsigned long currentTime = 0; // Current Time
 unsigned long previousTime = 0; // Previous current time
 
@@ -65,22 +67,36 @@ long debounceTime = 100; // Set time to disregard consecutive interrupts from ra
 const int queueSize = 30; // Size of queue
 
 // Wifi variables
-const char* wifi_ssid = "Fairview Wi-fi"; // Wifi information
-const char* wifi_password = "c64be3dcb2"; // Password information
+const char* wifiSSID = "Moe's"; // Wifi information
+const char* wifiPassword = "tbatstdgagitw"; // Password information
 
-WiFiUDP Udp;
-IPAddress timeServer;
+WiFiUDP Udp; // Create UDP object
+IPAddress timeServer; // Create time server IP object
 const char* host = "0.uk.pool.ntp.org"; // Address to retrieve current time from
-unsigned int localPort = 8888;  // local port to listen for UDP packets
+unsigned int localPort = 8888;  // Local port to listen for UDP packets
 
-String readingTime = ""; // Time of reading
-const double forwardDst = 3.31; // When daylight savings pushes clocks forwards an hour
-const double backwardDst = 10.31; // When daylight savings rewinds clocks backwards an hour
+String newReadingTime = ""; // Time of reading
+const double forwardDst = 3.31; // When daylight savings pushes clocks forwards an hour [m.dd]
+const double backwardDst = 10.31; // When daylight savings rewinds clocks backwards an hour [m.dd]
 const int timeZone = 0; // Current time-zone (GMT)
+
+IPAddress dbServer; // Database server IP object
+const char* dbHost = "db.dcs.aber.ac.uk"; // Database hots name
+const int dbPort = 3306; // Database port number
+char dbUser[] = "cjt6"; // Database user
+char dbPassword[] = "Wigan1992"; // Database password
+
+WiFiClient client; // Wifi Client connection
+MySQL_Connection conn((Client *)&client); // SQL Client connection
+
+char INSERT_SQL[] = "INSERT INTO cs394_15_16_cjt6.weather_reading (inward_temperature, inward_humidity, outward_temperature, outward_humidity, wind_direction, wind_speed, rainfall) VALUES (%s, %s, %s, %s, '%s', %s, %s)";
+char query[400]; // SQL insert query
 
 // Class: Is a set of readings taken at the same time
 class Reading {
   private:
+    String readingTime; // Time reading was taken
+
     double readingInwardDht22Temperature; // Inward DHT22 temperature reading
     double readingInwardDht22Humidity; // Inward DHT22 humidity reading
     double readingOutwardDht22Temperature; // Outward DHT22 temperature reading
@@ -96,7 +112,7 @@ class Reading {
       // Empty Object
     }
     Reading(double inputInwardDht22Temperature, double inputInwardht22Humidity, double inputOutwardDht22Temperature,
-            double inputOutwardDht22Humidity, String inputWindDirection, double inputWindSpeed, double inputRainfall) {
+            double inputOutwardDht22Humidity, String inputWindDirection, double inputWindSpeed, double inputRainfall, String inputReadingTime) {
 
       readingInwardDht22Temperature = inputInwardDht22Temperature;
       readingInwardDht22Humidity = inputInwardht22Humidity;
@@ -105,6 +121,7 @@ class Reading {
       readingWindDirection = inputWindDirection;
       readingWindSpeed = inputWindSpeed;
       readingRainfall = inputRainfall;
+            readingTime = inputReadingTime;
     }
 
     double getReadingInwardDht22Temperature();
@@ -114,8 +131,13 @@ class Reading {
     String getReadingWindDirection();
     double getReadingWindSpeed();
     double getReadingRainfall();
+    String getReadingTime();
 };
 
+
+String Reading::getReadingTime() {
+  return readingTime;
+}
 
 double Reading::getReadingInwardDht22Temperature() {
   return readingInwardDht22Temperature;
@@ -148,8 +170,8 @@ double Reading::getReadingRainfall() {
 // Class: Implements the abstract data type 'Queue'
 class Queue {
   private:
-    unsigned int queueHead;
-    unsigned int queueTail;
+    unsigned int queueHead; // Start of queue
+    unsigned int queueTail; // End of queue
     Reading queue[queueSize];
 
   public:
@@ -209,20 +231,24 @@ double getDhtReading(DHT sensor, dhtReadingType type) {
   double tempReading;
 
   if (type == TEMPERATURE) {
-    if (isnan(tempReading)) {
+    tempReading = sensor.readTemperature();
+    if (isnan(tempReading) == true) {
+      tempReading = -50.00;
       Serial.print("\nFailed to read temperature from DHT\n");
+      return tempReading;
     }
     else {
-      tempReading = sensor.readTemperature();
       return tempReading;
     }
   }
   else if (type == HUMIDITY) {
-    if (isnan(tempReading)) {
+    tempReading = sensor.readHumidity();
+    if (isnan(tempReading) == true) {
+      tempReading = -50.00;
       Serial.print("\nFailed to read humidity from DHT\n");
+      return tempReading;
     }
     else {
-      tempReading = sensor.readHumidity();
       return tempReading;
     }
   }
@@ -234,11 +260,9 @@ boolean recieveDatagram() {
 
   while (digitalRead(ANEMOMETER_PIN) == HIGH) {
     delayMicroseconds(1);
-    //yield();
   }
   while (digitalRead(ANEMOMETER_PIN) == LOW) {
     delayMicroseconds(1);
-    //yield();
     duration++;
   }
   // Anemometer transmits data every two seconds
@@ -290,10 +314,11 @@ void decomposeWindReading() {
   if (checksum != calculatedChecksum) {
     Serial.println("\nFailed to read from anemometer |Checksum Error|");
     Serial.println("Checksum: " + String(checksum) + " != " + String(calculatedChecksum));
-    windSpeed = -1; // Sets windSpeed to -1 for database to discard
   }
   else {
+    Serial.println(windSpeedValue);
     windSpeed = double(windSpeedValue) / 10;
+    Serial.println(windSpeed);
   }
 }
 
@@ -372,7 +397,7 @@ byte packetBuffer[NTP_PACKET_SIZE]; //buffer to hold incoming & outgoing packets
 
 // Sends a NTP request to the time server at the given address
 // **Modified from time library example TimeNTP_ESP8266WiFi**
-void sendNTPpacket(IPAddress &address) {
+void sendNtpPacket(IPAddress &address) {
   // Set all bytes in the buffer to 0
   memset(packetBuffer, 0, NTP_PACKET_SIZE);
   // Initialize values needed to form NTP request
@@ -396,8 +421,8 @@ void sendNTPpacket(IPAddress &address) {
 // **Modified from time library example TimeNTP_ESP8266WiFi**
 time_t getNtpTime() {
   while (Udp.parsePacket() > 0) ; // Discard any previously received packets
-  Serial.println("Transmit NTP Request");
-  sendNTPpacket(timeServer);
+  Serial.println("\nTransmit NTP Request");
+  sendNtpPacket(timeServer);
   uint32_t beginWait = millis();
   while (millis() - beginWait < 1500) {
     int size = Udp.parsePacket();
@@ -451,24 +476,85 @@ String getTime() {
   }
 }
 
+
+void connectToDatabase() {
+  WiFi.hostByName(dbHost, dbServer);
+  if (conn.connect(dbServer, dbPort, dbUser, dbPassword)) {
+    Serial.println("\nConnected to database");
+  }
+  else {
+    Serial.println("\nConnection to database failed");
+  }
+}
+
+// Inserts the sensor information into the mySQL Database
+// Returns boolean: true = insertion successful
+boolean insertData() {
+  int attempts = 0; // Number of database connection attempts
+  if (conn.connected()) {
+    // Loop though all the items in the queue and insert into database
+    for (int i = 0; i <= readingQueue.getQueueLength(); i++) {
+      Reading temp = readingQueue.getQueueItem(i); // Get item from queue
+
+      MySQL_Cursor *cur_mem = new MySQL_Cursor(&conn);
+
+      // Convert variables into char for query insertion
+      char rqit[10];
+      dtostrf(temp.getReadingInwardDht22Temperature(), 5, 2, rqit);
+      char rqot[10];
+      dtostrf(temp.getReadingOutwardDht22Temperature(), 5, 2, rqot);
+      char rqih[10];
+      dtostrf(temp.getReadingInwardDht22Humidity(), 5, 2, rqih);
+      char rqoh[10];
+      dtostrf(temp.getReadingOutwardDht22Humidity(), 5, 2, rqoh);
+      String rqwd;
+      rqwd = temp.getReadingWindDirection();
+      char rqws[10];
+      dtostrf(temp.getReadingWindSpeed(), 6, 2, rqws);
+      char rqr[10];
+      dtostrf(temp.getReadingRainfall(), 4, 2, rqr);
+      String rqt;
+      rqt = temp.getReadingTime();
+
+      sprintf(query, INSERT_SQL, rqit, rqot, rqih, rqoh, rqwd.c_str(), rqws, rqr);
+      Serial.println(query);
+      cur_mem->execute(query); // Execute query
+      delete cur_mem; // Delete stored information to save memory
+      readingQueue.dequeue(); // Remove item from queue
+    }
+    Serial.println("\nData inserted.");
+    return true;
+  }
+  else {
+    if(attempts<3){
+     connectToDatabase();
+     attempts++;
+    }
+    else {
+     attempts = 0;
+     return false;
+    }
+  }
+}
+
 // Outputs the most recent meteorological data to the serial monitor
 void displayLastReading() {
-  Serial.println("\nDate Time: " + readingTime);
+  Serial.println("\nDate Time: " + newReadingTime);
   Serial.println("Inward DHT22 Temperature: " + String(inwardDht22Temperature) + "\260C");
   Serial.println("Inward DHT22 Humidity: " + String(inwardDht22Humidity) + "%");
   Serial.println("Outward DHT22 Temperature: " + String(outwardDht22Temperature) + "\260C");
   Serial.println("Outward DHT22 Humidity: " + String(outwardDht22Humidity) + "%");
   Serial.println("Wind Direction: " + String(windDirection));
   Serial.println("Wind Speed: " + String(windSpeed) + " m/s");
-  Serial.println("Rainfall: " + String(rainfall) + " mm");
+  Serial.println("Rainfall: " + String(rainfall) + " mm\n");
 }
 
 // System set-up
 void setup() {
   Serial.begin(115200);
   Serial.println("\nConnecting to: ");
-  Serial.println(wifi_ssid);
-  WiFi.begin(wifi_ssid, wifi_password);
+  Serial.println(wifiSSID);
+  WiFi.begin(wifiSSID, wifiPassword);
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
     Serial.println("WiFi connection failed, retrying.");
@@ -509,22 +595,23 @@ void loop() {
       decomposeWindReading(); // Decomposed datagram into its parts: WindDirection and WindSpeed
       translateWindDirection(); // Gets the associated compass direction from its number
     }
+    else {
+      windSpeed = -50.00;
+      windDirection = "N/A";
+    }
     rainfall = getRainReading(); // Gets total rainfall
 
-    readingTime = getTime();
-
+    newReadingTime = getTime();
+    
     // Create new reading set from retrieved information
-    Reading newReading = Reading(inwardDht22Temperature, outwardDht22Temperature, inwardDht22Humidity, outwardDht22Humidity, windDirection, windSpeed, rainfall);
+    Reading newReading = Reading(inwardDht22Temperature, outwardDht22Temperature, inwardDht22Humidity, outwardDht22Humidity, windDirection, windSpeed, rainfall, newReadingTime);
     readingQueue.enqueue(newReading); // Adds it to queue
-    //for (int i = 0; i < readingQueue.getQueueLength(); i++) {
-     // Reading temp = readingQueue.getQueueItem(i);
-     // Serial.println(temp.getReadingInwardDht22Temperature());
-   // }
+
     // Perform when DEBUG flag is set to 'true'
     if (DEBUG == true) {
       displayLastReading();
     }
-
     rainCount = rainCount - oldRainCount;
   }
+  insertData();
 }

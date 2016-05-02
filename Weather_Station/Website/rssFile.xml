@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+<channel>
+<title>MMP Weather Station</title>
+<link>localhost/website/home.php</link>
+<description>Retrieves the most recent data from a weather station</description>
+<language>en-gb</language>
+<copyright>Copyright 2016 Chris Tsoi</copyright>
+<item>
+<title>Latest Reading</title>
+<description>
+[ Temperature: -50.0 ]
+[ Humidity: -50.0 ]
+[ Wind Speed:0.00 ]
+[ Wind Direction: ESE ]
+[ rainfall: 0.00 ]
+</description>
+<pubDate>Mon, 02 May 2016 15:41:21 CEST</pubDate></item>
+</channel>
+</rss>

@@ -29,6 +29,7 @@
 				legend: { position: 'bottom' },
 				hAxis: { title: 'Date' },
 				vAxis: { title: 'Temperature °C'},
+				colors: ['#639bc9', '#99dad8'],
 				width: 920,
 				height: 540
 			};
