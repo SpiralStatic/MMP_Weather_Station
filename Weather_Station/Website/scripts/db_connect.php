@@ -1,8 +1,8 @@
 <?php
-	$hostname = "localhost";
-	$username = "******";
-	$password = "******";
-	$database = "weather_prototype";
+	$hostname = "db.dcs.aber.ac.uk";
+	$username = "cjt6";
+	$password = "Wigan1992";
+	$database = "cs394_15_16_cjt6";
 
 	// Create connection
 	$connection = new mysqli($hostname, $username, $password, $database);

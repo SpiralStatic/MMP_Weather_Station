@@ -1,31 +1,200 @@
-/* Web Page */
+* {
+    -webkit-box-sizing: border-box;
+    -moz-box-sizing: border-box;
+    box-sizing: border-box;
+    margin-top: 0;
+}
+
 body {
 	width: 100%;
 	margin: 0;
 	padding: 0;
 	font: 1.2em monospace;
 	background-image: url(images/weatherBackground.png);
+	overflow-x: hidden;
 }
 
 header {
 	width: 100%;
+	max-height: 200px;
+	padding: 1vw;
 	background-color: white;
+	border: 1px dashed #ddd;
 }
 
 section {
-	
-}
-
-/* Title */
-h1.title {
-	margin: 0px;
-	padding: 3vw;
-	font-size: 1.8em;
+	margin-top: 1%;
+	margin-bottom: 1%;
 	text-align: center;
-	border
 }
 
-img {
-	width: 40px;
-	height: 40px;
+#logo {
+	width: 20vw;
+	height: auto;
+	max-width: 200px;
+}
+
+#logoLink:hover {
+	width: 20vw;
+	height: auto;
+	max-width: 200px;
+	content: url(images/weatherLogoHover.png);
+}
+
+#menuButton {
+	position: absolute;
+	top: 1vmin;
+	right: 0;
+	bottom: 0;
+	left: 90%;
+	width: 9vw;
+	height: 9vw;
+	border: none;
+	cursor: pointer;
+	background-image: url(images/navMenu.svg);
+	background-repeat: no-repeat;
+	background-color: white;
+	max-height: 100px;
+	max-width: 100px;
+	box-shadow: 0 0 0 5px #fff, 0 0 0 5px #ddd;
+}
+
+.has_nav #menuButton {
+	background-image: url(images/navCross.svg);
+	background-repeat: no-repeat;
+	background-color: white;
+	box-shadow: 0 0 0 5px #fff, 0 0 0 5px #ddd;
+}
+
+#menuItems {
+	position: relative;
+	width: 100%;
+	list-style: none;
+	margin: 0.5em;
+	padding: 0;
+	text-align: center;
+}
+
+#menuItems li{
+	display: inline;
+}
+
+.menuLink {
+	padding: 1vw 3vw;
+	background-color: #99dad8;
+    color: white;
+    text-decoration: none;
+    display: inline-block;
+	font-size: 1.3em;
+	font-weight: bold;
+	border: 1px dashed #ddd;
+}
+
+.menuLink:hover, .menuLink:active {
+	background-color: #639bc9;
+}
+
+nav.menu {
+	width: 100%;
+	display: none;
+	background-image: url(images/crossBackground.png);
+	border: 1px dashed #ddd;
+	box-shadow: 0 0 0 5px #fff, 0 0 0 5px #ddd;
+	max-height: 100px;
+}
+
+.has_nav nav.menu {
+    display: block;
+}
+
+#aberystwythMap {
+	width: 80%;
+	border: 1px dashed #ddd;
+	box-shadow: 0 0 0 5px #fff, 0 0 0 5px #ddd;
+}
+
+#largeImage {
+	margin-top: 2%;
+	margin-bottom: 2%;
+	width: 100%;
+	background-color: #639bc9;
+}
+
+.graph {
+	display: inline-block;
+	border: 1px dashed #ddd;
+	box-shadow: 0 0 0 3px #fff;
+}
+
+/* Tab Design */
+.tabLinks {
+	margin: 0;
+	margin-top: 1.5vw;
+	padding: 0;
+	text-align: center;
+}
+
+.tabLinks:after {
+	display: block;
+	clear: both;
+}
+ 
+.tabLinks li {
+	margin-left: 0.4em;
+	list-style: none;
+	font-size: 1.1em;
+	display: inline-block;
+}
+ 
+.tabLinks a {
+	padding: 1vw 2vw;
+	display: inline-block;
+	border-radius: 6px 6px 0px 0px;
+	background: rgba(200, 200, 200, 0.5);
+	color: white;
+	text-decoration: none;
+	border: 1px dashed #ddd;
+}
+ 
+.tabLinks a:hover {
+	background: rgba(153, 218, 216, 1);
+}
+
+li.active a, li.active a:hover {
+	background: rgba(255, 255, 255, 1);
+	color: black;
+}
+
+#searchFrame {
+	margin-top: 2%;
+	width: 80%;
+	height: 15em;
+	background-color: white;
+	border: 1px dashed #ddd;
+}
+
+input {
+	font: 1.1em monospace;
+	text-align: center;
+}
+
+.reading {
+	width: 100%;
+}
+
+p {
+	margin: 2%;
+}
+
+#latestReading {
+	display: inline-block;
+	text-align: left;
+}
+
+footer {
+	position: fixed;
+	bottom: 1em;
+	right: 1em;
+	width: 3.5vw;
+	height: 3.5vw;
 }
