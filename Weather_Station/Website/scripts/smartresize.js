@@ -1,3 +1,11 @@
+/* Smart Resize*/
+
+/*
+* Small plug-in that allows for smart resizing of the browser
+* as well as debouncing of functions. **BY Paul IRISH**
+* http://www.paulirish.com/2009/throttled-smartresize-jquery-event-handler/
+*/
+
 (function($,sr){
 
   // debouncing function from John Hann

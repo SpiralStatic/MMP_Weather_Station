@@ -1,13 +1,24 @@
+/* Graphs */
+	
+/*
+* Uses the google charts package to produce the weather graphs and
+* charts from the database data
+*/
+
+
+// Loads the required packages for the google charts
 google.charts.load('current', {'packages':['corechart']});
 google.charts.setOnLoadCallback(initialiseCharts);
 
-function getTimePeriod(graph){
-	var periodItem = document.getElementById(graph);
+// Retrieves the current tab period selection for a chart
+function getTimePeriod(chart){
+	var periodItem = document.getElementById(chart);
 	return {
 		aPeriod : periodItem.getAttribute('data-period')
 	};
 }
 
+// Creates and draws the series of weather charts
 function initialiseCharts() {
 	var tempPeriod = getTimePeriod('tempGraph').aPeriod;
 	var humidityPeriod = getTimePeriod('humidityGraph').aPeriod;
@@ -45,16 +56,18 @@ function initialiseCharts() {
 		async: false
 	}).responseText;
 	
-	// Create our data table out of JSON data loaded from server.
+	// Create the data table out of the loaded JSON data
 	var tempData = new google.visualization.DataTable(tempJsonData);
 	var humidityData = new google.visualization.DataTable(humidityJsonData);
 	var windData = new google.visualization.DataTable(windJsonData);
 	var directionData = new google.visualization.DataTable(directionJsonData);
 	var rainData = new google.visualization.DataTable(rainJsonData);
-
+	
+	// Sets the charts height and width in relation to screen size
 	var newWidth = $(window).width()/1.4;
 	var newHeight = newWidth/2;
 	
+	// Describe the options for each chart
 	var tempOptions = {
 		title: 'Temperature',
 		legend: { position: 'bottom' },
@@ -103,7 +116,7 @@ function initialiseCharts() {
 		height: newHeight
 	};
 	
-	// Instantiate and draw our chart, passing in some options.
+	// Instantiate and draw the chart, passing in some options.
 	var tempChart = new google.visualization.LineChart(document.getElementById('tempGraph'));
 	tempChart.draw(tempData, tempOptions);
 	var humidityChart = new google.visualization.LineChart(document.getElementById('humidityGraph'));
@@ -116,6 +129,7 @@ function initialiseCharts() {
 	rainChart.draw(rainData, rainOptions);
 }
 
+// Uses smartresize.js to automatically resize on charts after screen resize
 $(window).smartresize(function () {
 	initialiseCharts();
 });

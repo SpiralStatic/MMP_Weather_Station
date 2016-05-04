@@ -1,10 +1,21 @@
 <?php
-	require("db_connect.php");
+	/* Latest Readings */
+	
+	/*
+	* Retrieves the latest weather reading and displays it in a <section>
+	*/
+	
+	require("db_connect.php"); // Connects to database
+	
+	// Database query
 	$query = "SELECT DISTINCT * 
 	FROM weather_reading
 	WHERE date_time = (SELECT MAX(date_time) FROM weather_reading ORDER BY date_time DESC)";
+	
+	// Result of query
 	$result = mysqli_query($connection, $query) or die ("Unable to proceed with selection query");
-
+	
+	// Produce Results
 	while ($row = mysqli_fetch_assoc($result)) {
 		$date_time = $row['date_time'];
 		$temperature = round($row['outward_temperature']);

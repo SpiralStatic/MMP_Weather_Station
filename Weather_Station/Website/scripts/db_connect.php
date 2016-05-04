@@ -1,4 +1,11 @@
 <?php
+	/* Database Connection */
+	
+	/*
+	* Connects to the detailed database
+	*/
+	
+	// Database connection details
 	$hostname = "db.dcs.aber.ac.uk";
 	$username = "cjt6";
 	$password = "Wigan1992";

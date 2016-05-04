@@ -1,3 +1,9 @@
+/* Search Frame Styling */
+	
+/*
+* Modifies the CSS of the iframe in which the search resuls appear
+*/
+
 $(document).ready(function() {
 	$('#searchFrame').load( function () {
 		$(this).contents().find('body').css('font', '1.2em monospace');
